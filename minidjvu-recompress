@@ -1,0 +1,35 @@
+#!/bin/sh
+
+# Copyright © 2010-2022 Jakub Wilk <jwilk@jwilk.net>
+# SPDX-License-Identifier: MIT
+
+if [ $# -ne 2 ]
+then
+    printf 'Usage: %s IN-DJVU-FILE OUT-DJVU-FILE\n' "${0##*/}" >&2
+    exit 1
+fi
+
+set -e -x
+
+pages_per_dict=10
+tmpdir=$(mktemp -d -t)
+input_djvu="$1"
+output_djvu="$2"
+mkdir "$tmpdir/djvu/"
+mkdir "$tmpdir/pbm/"
+djvused -e ls "$input_djvu" \
+| sed -n -e '/^ *\([0-9]\+\) \+P \+[0-9]\+ \+\(.*\)/ { s//\1 \2/p }' \
+| split - -a 4 -l $pages_per_dict "$tmpdir/x"
+for file in "$tmpdir/"x*
+do
+    while read n id
+    do
+        ddjvu -page=$n -1 -format=pbm "$input_djvu" "$tmpdir/pbm/${id%.djvu}.pbm"
+    done < "$file"
+    minidjvu -p "$pages_per_dict" "$tmpdir/pbm/"*.pbm "$tmpdir/tmp.djvu"
+    djvmcvt -i "$tmpdir/tmp.djvu" "$tmpdir/djvu/" "$tmpdir/index.djvu"
+    rm -rf "$tmpdir/pbm/"*.pbm
+done
+djvm -c "$output_djvu" "$tmpdir/djvu/"*.djvu
+
+# vim:ts=4 sts=4 sw=4 et
